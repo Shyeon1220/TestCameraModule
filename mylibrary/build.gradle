@@ -82,13 +82,13 @@ afterEvaluate {
 
                 groupId = 'com.github.Shyeon1220'
                 artifactId = 'TestCameraLibrary'
-                version = '0.0.1'
+                version = '0.0.2'
             }
             debug(MavenPublication) {
                 from components.debug
                 groupId = 'com.github.Shyeon1220'
                 artifactId = 'TestCameraLibrary'
-                version = '0.0.1'
+                version = '0.0.2'
             }
         }
     }
