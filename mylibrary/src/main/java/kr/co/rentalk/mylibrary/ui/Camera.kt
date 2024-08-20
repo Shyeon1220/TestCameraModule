@@ -80,9 +80,9 @@ fun CameraScreen(
 ) {
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     val previewView = remember { PreviewView(context) }
-    val imageCapture = remember { mutableStateOf(ImageCapture.Builder().build()) }
-    val cameraInfo = remember { mutableStateOf<CameraInfo?>(null) }
-    val cameraControl = remember { mutableStateOf<CameraControl?>(null) }
+    var imageCapture by remember { mutableStateOf(ImageCapture.Builder().build()) }
+    var cameraInfo by remember { mutableStateOf<CameraInfo?>(null) }
+    var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
     val bitmap by viewModel.bitmap.collectAsStateWithLifecycle()
     val shutterState by viewModel.shutterState.collectAsStateWithLifecycle()
 
@@ -99,48 +99,50 @@ fun CameraScreen(
                         .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                         .build()
                     val previewBuilder = Preview.Builder()
-                    //viewModel.setPreviewExtender(previewBuilder)
+                    viewModel.setPreviewExtender(previewBuilder)
                     val preview = previewBuilder
                         .setResolutionSelector(resolutionSelector)
                         .build().apply {
                             setSurfaceProvider(previewView.surfaceProvider)
                         }
-                    imageCapture.value = ImageCapture.Builder()
+                    imageCapture = ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                         .setResolutionSelector(resolutionSelector)
                         .build()
-                    (context as ComponentActivity).lifecycleScope.launch(Dispatchers.Main) {
-                        cameraProvider?.unbindAll()
-                        val camera = cameraProvider?.bindToLifecycle(
-                            context, cameraSelector, preview, imageCapture.value
-                        )
-                        camera?.let {
-                            cameraInfo.value = it.cameraInfo
-                            cameraControl.value = it.cameraControl
-                        }
+                    //(context as ComponentActivity).lifecycleScope.launch(Dispatchers.Main) {
+                    cameraProvider?.unbindAll()
+                    val camera = cameraProvider?.bindToLifecycle(
+                        (context as ComponentActivity), cameraSelector, preview, imageCapture
+                    )
+                    camera?.let {
+                        cameraInfo = it.cameraInfo
+                        cameraControl = it.cameraControl
                     }
+                    //}
                 },
                 ContextCompat.getMainExecutor(context)
             )
         }
     }
-    CameraScreenContents(
-        previewView,
-        cameraInfo = cameraInfo.value,
-        cameraControl = cameraControl.value,
-        bitmap = bitmap,
-        photoPositionData = photoData,
-        shutterState = shutterState,
-        resetBitmap = { viewModel.resetBitmap() },
-        takePicture = {
-            viewModel.takePicture(
-                context,
-                imageCapture = imageCapture.value,
-                photoUri
-            )
-        },
-        completeAction = { takePicture -> completeAction(takePicture) }
-    )
+    if (cameraInfo != null && cameraControl != null) {
+        CameraScreenContents(
+            previewView,
+            cameraInfo = cameraInfo,
+            cameraControl = cameraControl,
+            bitmap = bitmap,
+            photoPositionData = photoData,
+            shutterState = shutterState,
+            resetBitmap = { viewModel.resetBitmap() },
+            takePicture = {
+                viewModel.takePicture(
+                    context,
+                    imageCapture = imageCapture,
+                    photoUri
+                )
+            },
+            completeAction = { takePicture -> completeAction(takePicture) }
+        )
+    }
 }
 
 @Composable
@@ -345,14 +347,14 @@ private fun CameraPreview(
                 contentScale = ContentScale.FillHeight
             )
         }
-        /*if (!shutterState) {
+        if (!shutterState) {
             Text(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .background(Color.White),
                 text = "카메라 조정 중"
             )
-        }*/
+        }
 
         if (isFocusActive && focusPosition != null) {
             Box(
@@ -381,8 +383,11 @@ private fun CameraPreviewButtonContainer(
     Box(
         modifier = modifier
     ) {
-        //val painter = if (shutterState) painterResource(id = R.drawable.ic_shutter_normal) else painterResource(id = R.drawable.ic_shutter_not_enable)
-        val painter = painterResource(id = R.drawable.ic_shutter_normal)
+        val painter =
+            if (shutterState) painterResource(id = R.drawable.ic_shutter_normal) else painterResource(
+                id = R.drawable.ic_shutter_not_enable
+            )
+        //val painter = painterResource(id = R.drawable.ic_shutter_normal)
         Image(
             modifier = Modifier
                 .align(Alignment.Center)
