@@ -3,6 +3,7 @@ package kr.co.rentalk.mylibrary.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.ComponentActivity
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
@@ -25,18 +26,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +59,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,7 +71,13 @@ import kr.co.rentalk.mylibrary.data.PhotoData
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun CameraScreen(context: Context, viewModel: CameraViewModel, photoData: PhotoData, photoUri: Uri?, finishActivity: () -> Unit, completeAction: (bitmap: Bitmap) -> Unit) {
+fun CameraScreen(
+    context: Context,
+    viewModel: CameraViewModel = viewModel(),
+    photoData: PhotoData,
+    photoUri: Uri?,
+    completeAction: (bitmap: Bitmap) -> Unit
+) {
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     val previewView = remember { PreviewView(context) }
     val imageCapture = remember { mutableStateOf(ImageCapture.Builder().build()) }
@@ -84,7 +92,9 @@ fun CameraScreen(context: Context, viewModel: CameraViewModel, photoData: PhotoD
             cameraProviderFuture.addListener(
                 {
                     cameraProvider = cameraProviderFuture.get()
-                    val resolutionSelector = ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY).build()
+                    val resolutionSelector = ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .build()
                     val cameraSelector = CameraSelector.Builder()
                         .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                         .build()
@@ -99,14 +109,15 @@ fun CameraScreen(context: Context, viewModel: CameraViewModel, photoData: PhotoD
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                         .setResolutionSelector(resolutionSelector)
                         .build()
-
-                    cameraProvider?.unbindAll()
-                    val camera = cameraProvider?.bindToLifecycle(
-                        (context as CameraActivity), cameraSelector, preview, imageCapture.value
-                    )
-                    camera?.let {
-                        cameraInfo.value = it.cameraInfo
-                        cameraControl.value = it.cameraControl
+                    (context as ComponentActivity).lifecycleScope.launch(Dispatchers.Main) {
+                        cameraProvider?.unbindAll()
+                        val camera = cameraProvider?.bindToLifecycle(
+                            context, cameraSelector, preview, imageCapture.value
+                        )
+                        camera?.let {
+                            cameraInfo.value = it.cameraInfo
+                            cameraControl.value = it.cameraControl
+                        }
                     }
                 },
                 ContextCompat.getMainExecutor(context)
@@ -121,8 +132,13 @@ fun CameraScreen(context: Context, viewModel: CameraViewModel, photoData: PhotoD
         photoPositionData = photoData,
         shutterState = shutterState,
         resetBitmap = { viewModel.resetBitmap() },
-        takePicture = { viewModel.takePicture(context, imageCapture = imageCapture.value, photoUri) },
-        finishActivity = finishActivity,
+        takePicture = {
+            viewModel.takePicture(
+                context,
+                imageCapture = imageCapture.value,
+                photoUri
+            )
+        },
         completeAction = { takePicture -> completeAction(takePicture) }
     )
 }
@@ -137,65 +153,75 @@ fun CameraScreenContents(
     shutterState: Boolean,
     resetBitmap: () -> Unit,
     takePicture: () -> Unit,
-    finishActivity: () -> Unit,
     completeAction: (bitmap: Bitmap) -> Unit
 ) {
     bitmap?.let {
         CheckPicture(it, resetBitmap) { takePicture -> completeAction(takePicture) }
-    } ?: TakePicture(previewView, cameraInfo, cameraControl, photoPositionData, shutterState, finishActivity, takePicture)
+    } ?: TakePicture(
+        previewView,
+        cameraInfo,
+        cameraControl,
+        photoPositionData,
+        shutterState,
+        takePicture
+    )
 }
 
 @Composable
-private fun CheckPicture(bitmap: Bitmap, resetBitmap: () -> Unit, completeAction: (bitmap: Bitmap) -> Unit) {
+private fun CheckPicture(
+    bitmap: Bitmap,
+    resetBitmap: () -> Unit,
+    completeAction: (bitmap: Bitmap) -> Unit
+) {
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .wrapContentWidth()
             .background(Color.Black)
     ) {
+        //Box(modifier = Modifier.wrapContentWidth()) {
         Image(
             modifier = Modifier
                 .fillMaxSize()
                 .align(Alignment.Center),
             bitmap = bitmap.asImageBitmap(),
             contentDescription = "",
-            contentScale = ContentScale.FillHeight
+            contentScale = ContentScale.Fit
         )
         CheckButtonContainer(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .matchParentSize(),
             resetBitmap = resetBitmap,
             completeAction = { completeAction(it) },
             bitmap = bitmap
         )
+        //}
     }
 }
 
 @Composable
 private fun TakePicture(
-    previewView: PreviewView, cameraInfo: CameraInfo?,
-    cameraControl: CameraControl?, photoPositionData: PhotoData, shutterState: Boolean, finishActivity: () -> Unit, takePicture: () -> Unit
+    previewView: PreviewView,
+    cameraInfo: CameraInfo?,
+    cameraControl: CameraControl?,
+    photoPositionData: PhotoData,
+    shutterState: Boolean,
+    takePicture: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color.Black),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        IconButton(
-            modifier = Modifier
-                .size(56.dp)
-                .padding(10.dp),
-            onClick = { finishActivity() }
-        ) {
-            Icon(
-                Icons.Filled.ArrowBackIosNew,
-                contentDescription = null,
-                tint = Color.White
-            )
-        }
         Spacer(modifier = Modifier.weight(1f))
         CameraPreview(
-            Modifier.weight(7f), previewView, photoPositionData, shutterState, cameraInfo, cameraControl
+            Modifier.wrapContentSize(),
+            previewView,
+            photoPositionData,
+            shutterState,
+            cameraInfo,
+            cameraControl
         )
         CameraPreviewButtonContainer(
             Modifier
@@ -206,7 +232,12 @@ private fun TakePicture(
 }
 
 @Composable
-private fun CheckButtonContainer(modifier: Modifier, resetBitmap: () -> Unit, completeAction: (bitmap: Bitmap) -> Unit, bitmap: Bitmap) {
+private fun CheckButtonContainer(
+    modifier: Modifier,
+    resetBitmap: () -> Unit,
+    completeAction: (bitmap: Bitmap) -> Unit,
+    bitmap: Bitmap
+) {
     Row(
         modifier = modifier
             .background(CameraColor.DarkGray40)
@@ -214,7 +245,8 @@ private fun CheckButtonContainer(modifier: Modifier, resetBitmap: () -> Unit, co
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Button(
-            modifier = Modifier.wrapContentWidth(),
+            modifier = Modifier
+                .wrapContentWidth(),
             onClick = { resetBitmap() },
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.Transparent,
@@ -222,12 +254,15 @@ private fun CheckButtonContainer(modifier: Modifier, resetBitmap: () -> Unit, co
             ),
         ) {
             Text(
-                fontSize = 18.sp,
-                text = "다시시도"
+                fontSize = 17.sp,
+                fontFamily = FontFamily(Font(R.font.notosans_700)),
+                text = "다시 찍기"
             )
         }
+        Spacer(modifier = Modifier.weight(1f))
         Button(
-            modifier = Modifier.wrapContentWidth(),
+            modifier = Modifier
+                .wrapContentWidth(),
             onClick = {
                 completeAction(bitmap)
             },
@@ -237,8 +272,9 @@ private fun CheckButtonContainer(modifier: Modifier, resetBitmap: () -> Unit, co
             ),
         ) {
             Text(
-                fontSize = 18.sp,
-                text = "완료"
+                fontSize = 17.sp,
+                fontFamily = FontFamily(Font(R.font.notosans_700)),
+                text = "사진 사용"
             )
         }
     }
@@ -246,7 +282,10 @@ private fun CheckButtonContainer(modifier: Modifier, resetBitmap: () -> Unit, co
 
 @Composable
 private fun CameraPreview(
-    modifier: Modifier, previewView: PreviewView, photoPositionData: PhotoData, shutterState: Boolean,
+    modifier: Modifier,
+    previewView: PreviewView,
+    photoPositionData: PhotoData,
+    shutterState: Boolean,
     cameraInfo: CameraInfo?,
     cameraControl: CameraControl?,
 ) {
@@ -259,7 +298,10 @@ private fun CameraPreview(
     Box(modifier = modifier
         .pointerInput(Unit) {
             detectTransformGestures { _, pan, zoom, _ ->
-                currentZoomRatio = (currentZoomRatio * zoom).coerceIn(1f, cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f)
+                currentZoomRatio = (currentZoomRatio * zoom).coerceIn(
+                    1f,
+                    cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+                )
                 cameraControl?.setZoomRatio(currentZoomRatio)
             }
         }
@@ -289,14 +331,14 @@ private fun CameraPreview(
         if (cameraControl != null && cameraInfo != null) {
             AndroidView(
                 factory = { previewView },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.wrapContentSize()
             )
         }
         photoPositionData.guideImageRes?.let { imageRes ->
             Image(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
+                    .matchParentSize()
+                    .padding(vertical = 34.dp)
                     .align(Alignment.Center),
                 painter = painterResource(id = imageRes),
                 contentDescription = "",
@@ -331,7 +373,11 @@ private fun CameraPreview(
 }
 
 @Composable
-private fun CameraPreviewButtonContainer(modifier: Modifier, shutterState: Boolean, takePicture: () -> Unit) {
+private fun CameraPreviewButtonContainer(
+    modifier: Modifier,
+    shutterState: Boolean,
+    takePicture: () -> Unit
+) {
     Box(
         modifier = modifier
     ) {
